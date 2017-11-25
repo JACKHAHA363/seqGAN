@@ -63,25 +63,25 @@ def prepare_discriminator_data(pos_samples, neg_samples, gpu=False):
     return inp, target
 
 
-def batchwise_sample(gen, num_samples, batch_size):
+def batchwise_sample(gen, num_samples, rate=200):
     """
-    Sample num_samples samples batch_size samples at a time from gen.
+    Sample num_samples samples rate samples at a time from gen.
     Does not require gpu since gen.sample() takes care of that.
     """
 
     samples = []
-    for i in range(int(ceil(num_samples/float(batch_size)))):
-        samples.append(gen.sample(batch_size))
+    for i in range(int(ceil(num_samples/float(rate)))):
+        samples.append(gen.sample(rate))
 
     return torch.cat(samples, 0)[:num_samples]
 
 
-def batchwise_oracle_nll(gen, oracle, num_samples, batch_size, max_seq_len, start_letter=0, gpu=False):
-    s = batchwise_sample(gen, num_samples, batch_size)
+def batchwise_oracle_nll(gen, oracle, num_samples, args, rate=200):
+    s = batchwise_sample(gen, num_samples, rate)
     oracle_nll = 0
-    for i in range(0, num_samples, batch_size):
-        inp, target = prepare_generator_batch(s[i:i+batch_size], start_letter, gpu)
-        oracle_loss = oracle.batchNLLLoss(inp, target) / max_seq_len
+    for i in range(0, num_samples, rate):
+        inp, target = prepare_generator_batch(s[i:i+rate], args.start_letter, args.cuda)
+        oracle_loss = oracle.batchNLLLoss(inp, target) / args.max_seq_len
         oracle_nll += oracle_loss.data[0]
 
-    return oracle_nll/(num_samples/batch_size)
+    return oracle_nll/(num_samples/rate)
