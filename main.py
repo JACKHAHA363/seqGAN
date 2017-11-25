@@ -13,6 +13,7 @@ import discriminator
 import helpers
 
 import args
+import logger
 
 def train_generator_MLE(gen, gen_opt, oracle, real_data_samples, args):
     """
@@ -147,6 +148,7 @@ oracle_samples = helpers.batchwise_sample(oracle, args.num_data)
 if args.oracle_save is not None:
     torch.save(oracle.state_dict(), args.oracle_save)
 
+logger = logger.Logger(args.log_dir)
 # GENERATOR MLE TRAINING
 gen_optimizer = optim.Adam(gen.parameters(), lr=1e-2)
 if args.pre_g_load is not None:
@@ -161,6 +163,7 @@ else:
         oracle_loss, total_loss = train_generator_MLE(
             gen, gen_optimizer, oracle, oracle_samples, args
         )
+        logger.scalar_summary("oracle_loss", oracle_loss, epoch+1)
         print(' average_train_NLL = %.4f, oracle_sample_NLL = %.4f' % (total_loss, oracle_loss))
 
 if args.pre_g_save is not None:
@@ -189,7 +192,7 @@ oracle_loss = helpers.batchwise_oracle_nll(
 )
 print('\nInitial Oracle Sample Loss : %.4f' % oracle_loss)
 
-for epoch in range(args.adv_epochs):
+for epoch in range(args.mle_epochs, args.mle_epochs+args.adv_epochs):
     print('\n--------\nEPOCH %d\n--------' % (epoch+1))
     # TRAIN GENERATOR
     print('\nAdversarial Training Generator : ', end='')
@@ -199,6 +202,7 @@ for epoch in range(args.adv_epochs):
     oracle_loss = helpers.batchwise_oracle_nll(
         gen, oracle, args.num_eval, args)
     print(' oracle_sample_NLL = %.4f' % oracle_loss)
+    logger.scalar_summary("oracle_loss", oracle_loss, epoch+1)
 
     # TRAIN DISCRIMINATOR
     print('\nAdversarial Training Discriminator : ')
