@@ -12,8 +12,10 @@ class Discriminator(nn.Module):
         self.embedding_dim = embedding_dim
         self.max_seq_len = max_seq_len
         self.gpu = gpu
+        self.vocab_size = vocab_size
 
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
+        self.embeddings = nn.Linear(vocab_size, embedding_dim, bias=False)
         self.gru = nn.GRU(embedding_dim, hidden_dim, num_layers=2, bidirectional=True, dropout=dropout)
         self.gru2hidden = nn.Linear(2*2*hidden_dim, hidden_dim)
         self.dropout_linear = nn.Dropout(p=dropout)
@@ -28,8 +30,9 @@ class Discriminator(nn.Module):
             return h
 
     def forward(self, input, hidden):
-        # input dim                                                # batch_size x seq_len
-        emb = self.embeddings(input)                               # batch_size x seq_len x embedding_dim
+        # input dim                                                # batch_size x seq_len x vocab_size
+        emb = self.embeddings(input.view(-1, self.vocab_size))
+        emb = emb.view(input.size(0), input.size(1), self.embedding_dim)
         emb = emb.permute(1, 0, 2)                                 # seq_len x batch_size x embedding_dim
         _, hidden = self.gru(emb, hidden)                          # 4 x batch_size x hidden_dim
         hidden = hidden.permute(1, 0, 2).contiguous()              # batch_size x 4 x hidden_dim

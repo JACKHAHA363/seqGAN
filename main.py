@@ -8,6 +8,8 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 
+from torch.autograd import Variable
+
 import generator
 import discriminator
 import helpers
@@ -54,13 +56,16 @@ def train_generator_PG(gen, gen_opt, dis, args):
     The generator is trained using policy gradients, using the reward from the discriminator.
     Training is done for num_batches batches.
     """
-
+    sample_buf = torch.zeros(args.g_bsz*args.max_seq_len, args.vocab_size)
+    if args.cuda:
+        sample_buf = sample_buf.cuda()
     for batch in range(args.g_steps):
         s = gen.sample(args.g_bsz)
         inp, target = helpers.prepare_generator_batch(
             s, start_letter=args.start_letter, gpu=args.cuda
         )
-        rewards = dis.batchClassify(target)
+        s_oh = helpers.get_oh(s, sample_buf)
+        rewards = dis.batchClassify(Variable(s_oh))
 
         gen_opt.zero_grad()
         pg_loss = gen.batchPGLoss(inp, target, rewards)
@@ -79,6 +84,14 @@ def train_discriminator(discriminator, dis_opt, real_data_samples, generator, or
     val_inp, val_target = helpers.prepare_discriminator_data(
         pos_val, neg_val, gpu=args.cuda
     )
+    val_buffer = torch.zeros(200*args.max_seq_len, args.vocab_size)
+    if args.cuda:
+        val_buffer = val_buffer.cuda()
+    val_inp_oh = helpers.get_oh(val_inp, val_buffer)
+
+    inp_buf = torch.zeros(args.d_bsz*args.max_seq_len, args.vocab_size)
+    if args.cuda:
+        inp_buf = inp_buf.cuda()
     num_data = len(real_data_samples)
     for d_step in range(d_steps):
         s = helpers.batchwise_sample(generator, args.num_data)
@@ -92,16 +105,19 @@ def train_discriminator(discriminator, dis_opt, real_data_samples, generator, or
             total_acc = 0
 
             for i in range(0, 2 * num_data, args.d_bsz):
+                if i + args.d_bsz > 2*num_data:
+                    break
                 inp, target = dis_inp[i:i + args.d_bsz], dis_target[i:i + args.d_bsz]
+                inp_oh = helpers.get_oh(inp, inp_buf)
                 dis_opt.zero_grad()
-                out = discriminator.batchClassify(inp)
+                out = discriminator.batchClassify(Variable(inp_oh))
                 loss_fn = nn.BCELoss()
-                loss = loss_fn(out, target)
+                loss = loss_fn(out, Variable(target))
                 loss.backward()
                 dis_opt.step()
 
                 total_loss += loss.data[0]
-                total_acc += torch.sum((out>0.5)==(target>0.5)).data[0]
+                total_acc += torch.sum((out>0.5)==(Variable(target)>0.5)).data[0]
 
                 if (i / args.d_bsz) % ceil(ceil(2 * num_data / float(
                         args.d_bsz)) / 10.) == 0:  # roughly every 10% of an epoch
@@ -111,9 +127,9 @@ def train_discriminator(discriminator, dis_opt, real_data_samples, generator, or
             total_loss /= ceil(2 * num_data / float(args.d_bsz))
             total_acc /= float(2 * num_data)
 
-            val_pred = discriminator.batchClassify(val_inp)
+            val_pred = discriminator.batchClassify(Variable(val_inp_oh))
             print(' average_loss = %.4f, train_acc = %.4f, val_acc = %.4f' % (
-                total_loss, total_acc, torch.sum((val_pred>0.5)==(val_target>0.5)).data[0]/200.))
+                total_loss, total_acc, torch.sum((val_pred>0.5)==(Variable(val_target)>0.5)).data[0]/200.))
 
 # MAIN
 if args.oracle_load is not None:

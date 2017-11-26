@@ -53,9 +53,6 @@ def prepare_discriminator_data(pos_samples, neg_samples, gpu=False):
     target = target[perm]
     inp = inp[perm]
 
-    inp = Variable(inp)
-    target = Variable(target)
-
     if gpu:
         inp = inp.cuda()
         target = target.cuda()
@@ -85,3 +82,8 @@ def batchwise_oracle_nll(gen, oracle, num_samples, args, rate=200):
         oracle_nll += oracle_loss.data[0]
 
     return oracle_nll/(num_samples/rate)
+
+def get_oh(data, buf):
+    buf.zero_()
+    buf.scatter_(1, data.view(-1, 1), 1)
+    return buf.view(data.size(0), data.size(1), buf.size(1))
