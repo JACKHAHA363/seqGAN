@@ -7,7 +7,6 @@ import pdb
 import math
 import torch.nn.init as init
 
-
 class Generator(nn.Module):
 
     def __init__(self, embedding_dim, hidden_dim, vocab_size, max_seq_len, gpu=False, oracle_init=False):
@@ -98,6 +97,27 @@ class Generator(nn.Module):
 
         return loss     # per batch
 
+    def batchLL(self, inp, target):
+        """
+        :param inp: [bsz, seqlen]
+        :param target: [bsz, seqlen]
+        :return: [bsz]
+        """
+        bsz = inp.size(0)
+        seq_len = inp.size(1)
+        inp = inp.permute(1, 0)
+        target = target.permute(1, 0)
+        h = self.init_hidden(bsz)
+        ll = torch.zeros(bsz)
+        if self.gpu:
+            ll = ll.cuda()
+        for i in range(seq_len):
+            out, h = self.forward(inp[i], h)
+            for j in range(bsz):
+                ll[j] += out[j, target[i,j].data[0]].data[0]
+        return ll
+
+
     def batchPGLoss(self, inp, target, reward):
         """
         Returns a pseudo-loss that gives corresponding policy gradients (on calling .backward()).
@@ -125,4 +145,3 @@ class Generator(nn.Module):
                 loss += -out[j][target.data[i][j]]*reward[j]     # log(P(y_t|Y_1:Y_{t-1})) * Q
 
         return loss/batch_size
-

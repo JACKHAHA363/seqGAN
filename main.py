@@ -50,8 +50,28 @@ def train_generator_MLE(gen, gen_opt, oracle, real_data_samples, args):
     )
     return oracle_loss, total_loss
 
+def train_generator_my(gen, gen_opt, dis, args):
+    s = gen.sample(args.g_bsz)
+    s_buf = torch.zeros(args.g_bsz*args.max_seq_len, args.vocab_size)
+    s_oh = helpers.get_oh(s, s_buf)
+    for step in range(args.g_steps):
+        s_oh_var = Variable(s_oh, requires_grad=True)
+        reward = dis.batchClassify(s_oh_var)
+        reward = torch.mean(reward)
+        print("step {} reward {}".format(step, reward.data[0]))
+        grad = torch.autograd.grad(
+            outputs=reward, inputs=s_oh_var
+        )[0].data
+        # sample from new prob
+        gn = torch.sum(grad, -1, keepdim=True)
+        new_prob = grad / gn.expand_as(grad)
+        
+        s_oh = (1-0.05) * s_oh + 0.05 * new_prob
 
-def train_generator_PG(gen, gen_opt, dis, args):
+    ipdb.set_trace()
+
+
+def train_generator_PG(gen, gen_opt, dis, oracle, args):
     """
     The generator is trained using policy gradients, using the reward from the discriminator.
     Training is done for num_batches batches.
@@ -64,8 +84,10 @@ def train_generator_PG(gen, gen_opt, dis, args):
         inp, target = helpers.prepare_generator_batch(
             s, start_letter=args.start_letter, gpu=args.cuda
         )
-        s_oh = helpers.get_oh(s, sample_buf)
-        rewards = dis.batchClassify(Variable(s_oh))
+        # get reward from oracle
+        #s_oh = helpers.get_oh(s, sample_buf)
+        #rewards = dis.batchClassify(Variable(s_oh))
+        rewards = oracle.batchLL(inp, target)
 
         gen_opt.zero_grad()
         pg_loss = gen.batchPGLoss(inp, target, rewards)
@@ -213,7 +235,7 @@ for epoch in range(args.mle_epochs, args.mle_epochs+args.adv_epochs):
     # TRAIN GENERATOR
     print('\nAdversarial Training Generator : ', end='')
     sys.stdout.flush()
-    train_generator_PG(gen, gen_optimizer, dis, args)
+    train_generator_PG(gen, gen_optimizer, dis, oracle, args)
     # sample from generator and compute oracle NLL
     oracle_loss = helpers.batchwise_oracle_nll(
         gen, oracle, args.num_eval, args)
@@ -221,8 +243,8 @@ for epoch in range(args.mle_epochs, args.mle_epochs+args.adv_epochs):
     logger.scalar_summary("oracle_loss", oracle_loss, epoch+1)
 
     # TRAIN DISCRIMINATOR
-    print('\nAdversarial Training Discriminator : ')
-    train_discriminator(
-        dis, dis_optimizer, oracle_samples,
-        gen, oracle, args.d_steps, args.d_epochs, args
-    )
+    #print('\nAdversarial Training Discriminator : ')
+    #train_discriminator(
+    #    dis, dis_optimizer, oracle_samples,
+    #    gen, oracle, args.d_steps, args.d_epochs, args
+    #)
